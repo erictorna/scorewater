@@ -1,0 +1,81 @@
+---
+title: "Conditions EDARS petites"
+date: '`r Sys.time()`'
+output: 
+  html_document: 
+    toc: yes
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(knitr)
+library(kableExtra)
+library(survival)
+library(data.table)
+library(flextable)
+library(officer)
+library(GGally)
+library(survival)
+library(htmltools)
+library(dplyr)
+library(corrplot)
+library(RColorBrewer)
+library(ggpubr)
+library(cluster)
+library(factoextra) 
+library(devtools)
+library(FeatureImpCluster)
+library(flexclust)
+# install_github("vqv/ggbiplot")
+library(ggbiplot)
+knitr::opts_chunk$set(echo = FALSE)
+setwd("/home/idiap/projects/scorewater/build.datanostand")
+load('conditions_censal_nostand_EDAR.RData')
+setDT(conditions_gral_censal)
+conditions_gral_censal[is.na(conditions_gral_censal)] <- 0
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r}
+fstat = function(x) factor(x, labels = c('Colon cancer', 'Obesity', 'Thyroid function'))
+
+EV = c('Colon cancer', 'Obesity', 'Thyroid function')
+
+```
+
+## Table of every quantile
+```{r, results='asis'}
+data = conditions_gral_censal[, prev, keyby = .(condicio, municipi, scensal, poblacio_prevalent, perc_censat)]
+data <- data %>% 
+  group_by(scensal, condicio, municipi) %>%
+  summarize_if(is.numeric, mean, na.rm = T)
+numberlist = c(20:1)
+for(DISEASE in EV){
+  cat(sprintf("\n\n# %s \n\n", DISEASE))
+  table <- data.frame(condicio=character(),
+                 municipi=character(), 
+                 scensal=double(),
+                 poblacio_prevalent=double(),
+                 prev = double(),
+                 quartile = integer(),
+                 stringsAsFactors=FALSE) 
+  df = subset(data, condicio == DISEASE)
+  df <- df[with(df,order(-prev)),]
+  for (number in numberlist) {
+    df$quantile <- ntile(df$prev, 20)  
+    quantils <- df[df$quantile == number, ] 
+    table = rbind(table, quantils[which.max(quantils$poblacio_prevalent),])
+  }
+  table$scensal <- factor(table$scensal, levels = table$scensal)
+  print(ggplot() + 
+        geom_bar(data = table, aes(x=scensal, y=prev, fill = quantile), stat = 'identity') +
+        theme_minimal() +
+        ggtitle(DISEASE) +
+        labs(x = 'Quantile', y = ' prevalence') +
+        theme(axis.text.x = element_text(angle=90, hjust = 1)))
+  df$condicio <- NULL
+  print(kable_styling(kable(df)))
+}
+```

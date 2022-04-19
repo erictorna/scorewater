@@ -1,0 +1,227 @@
+---
+title: "Farmacs by scensal"
+date: '`r Sys.time()`'
+output: 
+  html_document: 
+    toc: yes
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(knitr)
+library(kableExtra)
+library(survival)
+library(data.table)
+library(flextable)
+library(officer)
+library(GGally)
+library(survival)
+library(htmltools)
+library(dplyr)
+library(corrplot)
+library(RColorBrewer)
+library(ggpubr)
+library(cluster)
+library(factoextra) 
+library(devtools)
+library(FeatureImpCluster)
+library(flexclust)
+# install_github("vqv/ggbiplot")
+library(ggbiplot)
+knitr::opts_chunk$set(echo = FALSE)
+farmacs <- readRDS('~idiap/projects/scorewater/build.data/farmacsSCOREwater2019.rds')
+farmacs[is.na(farmacs)] <- -1
+farmacs$ip2011 <- NULL
+farmacs$cm <- NULL
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r, include=FALSE}
+farmacs1 <- farmacs[farmacs$pob_IDIAP_2020 >= 0, ] # Algunes files tenien valors negatius de poblacio prevalent, em decidit treure'ls
+farmacs1 <- farmacs1 %>% 
+    group_by(scensal, provincia, sexe, edat) %>%
+    summarize_if(is.numeric, max, na.rm = T)
+farmacs1 <- farmacs1 %>% 
+    group_by(provincia, scensal) %>%
+    summarize_if(is.numeric, sum, na.rm = T)
+farmacs$pob_IDIAP_2020 <- NULL
+farmacs1$provincia <- NULL
+farmacs1$nddd <- NULL
+farmacs1$env <- NULL
+farmacs = merge(farmacs, farmacs1)
+```
+# Envases per province
+```{r}
+autofit(flextable(farmacs[,.(N_envases=sum(env ,na.rm = T)),.(provincia)]))
+```
+
+# Envases per compound
+```{r}
+autofit(flextable(farmacs[,.(N_env=sum(env ,na.rm = T)),.(Compound)]))
+```
+
+## Barplot of nddd per compound
+```{r, fig.width = 7, fig.height=4.5, fig.align='center'}
+n_farmacs = farmacs[,.(equal=sum(nddd ,na.rm = T)),.(Compound = Compound)][]
+ggplot() + 
+  geom_bar(data = n_farmacs, aes(x=Compound, y=equal), stat = 'identity') +
+  theme_minimal() +
+  labs(x = 'Compound', y = 'nddd') +
+  theme(axis.text.x = element_text(angle=90, hjust = 1))
+
+```
+
+
+
+```{r, include=FALSE}
+# Total Number of envases of every compound * municipality
+# a = farmacs[, .N, keyby = .(Compound)]
+# farmaclist = a[[1]]
+# fstat = function(x) factor(x, labels = farmaclist)
+# farmacs[, subgrup := fstat(Compound)]
+# autofit(flextable(dcast(farmacs[, sum(env ,na.rm = T), keyby = .(Compound, municipi)], Compound ~ municipi)))
+```
+# Tables
+## 10 populations with higher prevalence (nddd/pob_IDIAP_2020)
+```{r, results='asis'}
+setDT(farmacs)
+a = farmacs[, .N, keyby = .(Compound)]
+farmaclist = a[[1]]
+farmacs$pob_IDIAP_2020 <- NULL
+farmacs <- farmacs %>% 
+    group_by(provincia, scensal, Compound) %>%
+    summarize_if(is.numeric, sum, na.rm = T)
+data = merge(farmacs, farmacs1)
+EV = farmaclist
+data$prevalence <- data$nddd/data$pob_IDIAP_2020
+for(DISEASE in EV){
+    df = subset(data, Compound == DISEASE)
+    scensaldata <- df[with(df,order(-prevalence)),]
+    scensaldata = scensaldata[1:10,]
+    scensaldata$scensal <- factor(scensaldata$scensal, levels = scensaldata$scensal)
+    print(ggplot() +
+            geom_bar(data = scensaldata, aes(x=scensal, y=prevalence, fill = provincia), stat = 'identity') +
+            theme_minimal() +
+            ggtitle(DISEASE) +
+            labs(x = 'Censal code', y = ' prevalence') +
+            theme(axis.text.x = element_text(angle=45, hjust = 1)))
+    print(landscape(kable_styling(kable(scensaldata[1:10,]))))
+    cat('----------------------------------------------------------------------------------------------------------------------------------------------------------------------------')
+}
+```
+
+## 20 quantiles
+```{r, results='asis'}
+numberlist = c(20:1)
+for(DISEASE in EV){
+  table <- data.frame(Compound=character(),
+                 scensal=character(), 
+                 provincia=character(),
+                 pob_IDIAP_2020=double(),
+                 nddd = double(),
+                 env = double(),
+                 prevalence = double(),
+                 quartile = integer(),
+                 stringsAsFactors=FALSE) 
+  df = subset(data, Compound == DISEASE)
+  df <- df[with(df,order(-prevalence)),]
+  for (number in numberlist) {
+    df$quartile <- ntile(df$prevalence, 20)  
+    quartils <- df[df$quartile == number, ] 
+    table = rbind(table, quartils[which.max(quartils$nddd),])
+  }
+  table$scensal <- factor(table$scensal, levels = table$scensal)
+  print(ggplot() + 
+          geom_bar(data = table, aes(x=scensal, y=prevalence, fill = provincia), stat = 'identity') +
+          theme_minimal() +
+          ggtitle(DISEASE) +
+          labs(x = 'Censal code', y = ' prevalence') +
+          theme(axis.text.x = element_text(angle=45, hjust = 1)))
+  table$quartile <- NULL
+  print(landscape(kable_styling(kable(table))))
+  cat('----------------------------------------------------------------------------------------------------------------------------------------------------------------------------')
+}
+```
+
+# Barplot of nddd/month
+```{r}
+farmacs <- readRDS('~idiap/projects/scorewater/build.data/farmacsSCOREwater2019.rds')
+farmacs[is.na(farmacs)] <- -1
+farmacs$ip2011 <- NULL
+farmacs$cm <- NULL
+data = farmacs %>%
+    group_by(month = lubridate::floor_date(date, "month"), Compound) %>%
+    summarize_if(is.numeric, sum, na.rm = T)
+EV = farmaclist
+
+for(DISEASE in EV){
+  df = subset(data, Compound == DISEASE)
+  print(ggplot() +
+    geom_bar(data = df, aes(x=month, y=nddd), stat = 'identity') +
+    theme_minimal() +
+    ggtitle(DISEASE) +
+    labs(x = 'Month', y = ' nddd') +
+    theme(axis.text.x = element_text(angle=90, hjust = 1)))
+  }
+```
+
+
+
+# Cluster analysis
+
+## Principal component analysis
+
+* Making 3 clusters as we are interested in determining how populations with high, medium and low consumption of medicines are grouped. 
+* Only the 4 features with higher importance were used
+
+```{r}
+setDT(farmacs)
+a = farmacs[, .N, keyby = .(Compound)]
+farmaclist = a[[1]]
+farmacs$pob_IDIAP_2020 <- NULL
+farmacs <- farmacs %>% 
+    group_by(provincia, scensal, Compound) %>%
+    summarize_if(is.numeric, sum, na.rm = T)
+data = merge(farmacs, farmacs1)
+data$prevalence <- data$nddd/data$pob_IDIAP_2020
+data = data %>% dplyr::select(scensal, Compound, prevalence)
+
+data = dcast(data, scensal ~ Compound, fill = 0)
+z <- data[,-c(1,1)]
+# means <- apply(z,2,mean)
+# sds <- apply(z,2,sd)
+# nor <- scale(z,center=means,scale=sds)
+set.seed(10)
+res <- kcca(z,k=3)
+set.seed(10)
+FeatureImp_res <- FeatureImpCluster(res,as.data.table(z))
+a = as.data.frame(FeatureImp_res$featureImp)
+# Seleccionem només els 4 farmacs més importants
+z = z %>% dplyr::select(Hydrochlorothiazide, Losartan, `Acetylsalicylic acid`, Acetaminophen)
+set.seed(10)
+res <- kcca(z,k=3)
+p = barplot(res)
+```
+
+
+## Cluster plot
+
+* Even if the Optimal number of clusters is 2, we decide to keep making 3 as it matches better our interests maintaining a high Silhouette width
+
+```{r}
+distance = dist(z)
+data.hclust = hclust(distance)
+pca <- prcomp(z, center = TRUE,scale. = TRUE)
+ggbiplot(pca)
+fviz_nbclust(z, kmeans, method = "silhouette")
+k2 <- kmeans(z, centers = 3, nstart = 25)
+fviz_cluster(k2, data = z)
+```
+
+* 492 = censal code 0801907097
+* 2615 = censal code 2501001001
+* 1851 = censal code 0820005003
+* 2746 = censal code 2516801001
+* 2485 = censal code 1707902022

@@ -1,0 +1,40 @@
+---
+title: "SCOREwater"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+library(dplyr)
+library(flextable)
+library(data.table)
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Descriptive without Standardization
+
+## Conditions
+
+* By municipality[[html]](descriptiva_nostand.html)
+
+* By censal code[[html]](descriptiva_censal_nostand.html)
+
+# EDARs
+
+* Descriptive[[html]](EDARp_municipal_nostand.html)
+
+# Barris + EDAR Besos (prevalences in %)
+
+* Carmel -> 20 of 21 census codes
+* Poblenou -> 6 of 10 census codes
+* St.Gervasi -> 5 of 11 census codes
+* Besos -> 691 of 1081 census codes
+
+```{r}
+load("/home/idiap/projects/scorewater/build.datanostand/barrisbesos.RData")
+autofit(flextable(barrisbesos))
+```

@@ -1,0 +1,81 @@
+---
+title: "Conditions EDARS petites"
+date: '`r Sys.time()`'
+output: 
+  html_document: 
+    toc: yes
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(knitr)
+library(kableExtra)
+library(survival)
+library(data.table)
+library(flextable)
+library(officer)
+library(GGally)
+library(survival)
+library(htmltools)
+library(dplyr)
+library(corrplot)
+library(RColorBrewer)
+library(ggpubr)
+library(cluster)
+library(factoextra) 
+library(devtools)
+library(FeatureImpCluster)
+library(flexclust)
+# install_github("vqv/ggbiplot")
+library(ggbiplot)
+knitr::opts_chunk$set(echo = FALSE)
+setwd("/home/idiap/projects/scorewater/build.datanostand")
+load('edarsp+g.RData')
+setDT(edars)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r}
+fstat = function(x) factor(x, labels = c('Colon cancer', 'Obesity', 'Thyroid function'))
+
+EV = c('Colon cancer', 'Obesity', 'Thyroid function')
+
+```
+
+## Table of every quantile
+
+* EDAR with highest population on every quantile was used for the plot
+
+```{r, results='asis'}
+data = edars[, prev, keyby = .(condicio, codi_edar, poblacio_prevalent, perc_censat)]
+data <- data %>% 
+  group_by(condicio, codi_edar) %>%
+  summarize_if(is.numeric, mean, na.rm = T)
+for(DISEASE in EV){
+  cat(sprintf("\n\n# %s \n\n", DISEASE))
+  table <- data.frame(condicio=character(),
+                 codi_edar=character(), 
+                 poblacio_prevalent=double(),
+                 prev = double(),
+                 quartile = integer(),
+                 stringsAsFactors=FALSE) 
+  df = subset(data, condicio == DISEASE)
+  df <- df[with(df,order(-prev)),]
+  df$quantile <- ntile(df$prev, 20)  
+  df$codi_edar <- factor(df$codi_edar, levels = df$codi_edar)
+  for (i in c(20:1)) {
+    quantils <- df[df$quantile == i, ] 
+    table = rbind(table, quantils[which.max(quantils$poblacio_prevalent),])
+  }
+  print(ggplot() + 
+        geom_bar(data = table, aes(x=codi_edar, y=prev, fill = quantile), stat = 'identity') +
+        theme_minimal() +
+        ggtitle(DISEASE) +
+        labs(x = 'EDAR', y = ' prevalence') +
+        theme(axis.text.x = element_text(angle=45, hjust = 1)))
+  df$condicio <- NULL
+  print(kable_styling(kable(df)))
+}
+```

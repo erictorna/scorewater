@@ -1,0 +1,6 @@
+DATAROOT=/home/idiap/data/scorewater
+RMD2HTML=R/run-knit2html.R
+
+BUILD_DATA=build.data
+BUILD_DATA_NOSTAND = build.datanostand
+BASE = /home/idiap/projects/scorewater

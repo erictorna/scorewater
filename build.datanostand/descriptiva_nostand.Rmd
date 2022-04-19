@@ -1,0 +1,430 @@
+---
+title: "Conditions"
+date: '`r Sys.time()`'
+output: 
+  html_document: 
+    toc: yes
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(knitr)
+library(kableExtra)
+library(survival)
+library(data.table)
+library(flextable)
+library(officer)
+library(GGally)
+library(survival)
+library(htmltools)
+library(dplyr)
+library(corrplot)
+library(RColorBrewer)
+library(ggpubr)
+library(cluster)
+library(factoextra) 
+library(devtools)
+library(FeatureImpCluster)
+library(flexclust)
+# install_github("vqv/ggbiplot")
+library(ggbiplot)
+knitr::opts_chunk$set(echo = FALSE)
+setwd("/home/idiap/projects/scorewater/build.datanostand")
+load('conditions_municipi_nostand.RData')
+setDT(conditions_gral_municipal)
+conditions_gral_municipal[is.na(conditions_gral_municipal)] <- 0
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+# Conditions
+## Province
+
+```{r}
+autofit(flextable(conditions_gral_municipal[,.(n=sum(casos_prevalents ,na.rm = T)),.(provincia)]))
+```
+
+
+### Barplot
+
+```{r, fig.width = 7, fig.height=4.5, fig.align='center'}
+n_province = conditions_gral_municipal[,.(n=sum(casos_prevalents ,na.rm = T)),.(province = provincia)][]
+
+ggplot() + 
+  geom_bar(data = n_province, aes(x=province, y=n), stat = 'identity') +
+  theme_minimal() +
+  # scale_x_continuous(breaks = seq(35,110,5)) +
+  labs(x = 'Province', y = 'Number of Individuals')
+```
+
+## Condition
+
+```{r}
+autofit(flextable(conditions_gral_municipal[,.(N=sum(casos_prevalents ,na.rm = T)),.(condicio)]))
+```
+
+
+### Barplot
+
+```{r, fig.width = 7, fig.height=4.5, fig.align='center'}
+n_conditions = conditions_gral_municipal[,.(equal=sum(casos_prevalents ,na.rm = T)),.(condicio = condicio)][]
+
+ggplot() + 
+  geom_bar(data = n_conditions, aes(x=condicio, y=equal), stat = 'identity') +
+  theme_minimal() +
+  # scale_x_continuous(breaks = seq(35,110,5)) +
+  labs(x = 'Condition', y = 'Number of Individuals') +
+  theme(axis.text.x = element_text(angle=90, hjust = 1))
+
+```
+
+## Condition * Province
+```{r}
+fstat = function(x) factor(x, labels = c('Alzheimer', 'Arthritis', 'Asthma', 'Atherosclerosis', 'Atrial fibrilation', 'Bipolar disorder', 'Breast cancer', 'Colon cancer', 'Depression', 'Diabetes', 'Heart failure', 'HIV', 'IBS/IBD', 'Kidney diseases', 'Lung cancer', 'Mania', 'Obesity', 'Psoriasis',  'Schizophrenia', 'Schizophrenia disorder', 'Thyroid cancer', 'Thyroid function'))
+
+conditions_gral_municipal[, condicio := fstat(condicio)]
+autofit(flextable(dcast(conditions_gral_municipal[, sum(casos_prevalents ,na.rm = T), keyby = .(condicio, provincia)], condicio ~ provincia)))
+```
+
+
+### Barplot of % cases for every province
+
+```{r, fig.align='center'}
+data = conditions_gral_municipal[, (sum(casos_prevalents ,na.rm = T)/(sum(poblacio_prevalent ,na.rm = T))), keyby = .(condicio, provincia)]
+
+ggplot(data, aes(factor(provincia), V1, fill = condicio)) + 
+  geom_bar(stat="identity", position = "dodge") +
+  labs(y= "Prevalence", x = "Provincia")
+
+```
+
+### Without Obesity, Thyroid function and Diabetes
+
+```{r, fig.align='center'}
+data = conditions_gral_municipal[, (sum(casos_prevalents ,na.rm = T)/(sum(poblacio_prevalent ,na.rm = T))), keyby = .(condicio, provincia)]
+data <- data[!grepl("Obesity", data$condicio),]
+data <- data[!grepl("Thyroid function", data$condicio),]
+data <- data[!grepl("Diabetes", data$condicio),]
+
+ggplot(data, aes(factor(provincia), V1, fill = condicio)) + 
+  geom_bar(stat="identity", position = "dodge") +
+  labs(y= "Prevalence", x = "Provincia")
+
+```
+
+
+```{r, include=FALSE}
+## Total number of cases for every population
+fstat = function(x) factor(x, labels = c('Alzheimer', 'Arthritis', 'Asthma', 'Atherosclerosis', 'Atrial fibrilation', 'Bipolar disorder', 'Breast cancer', 'Colon cancer', 'Depression', 'Diabetes', 'Heart failure', 'HIV', 'IBS/IBD', 'Kidney diseases', 'Lung cancer', 'Mania', 'Obesity', 'Psoriasis',  'Schizophrenia', 'Schizophrenia disorder', 'Thyroid cancer', 'Thyroid function'))
+
+conditions_gral_municipal[, condicio := fstat(condicio)]
+# autofit(flextable(dcast(conditions_gral[, sum(casos_prevalents ,na.rm = T), keyby = .(condicio, municipi)], condicio ~ municipi)))
+```
+
+
+## Tables
+### 10 populations with higher prevalence value
+```{r, results='asis'}
+data = conditions_gral_municipal[, prev, keyby = .(condicio, municipi, provincia, perc_censat)]
+data1 <- data %>% 
+  group_by(condicio, municipi, provincia) %>%
+  summarize_if(is.numeric, sum, na.rm = T)
+data2 <- data %>% 
+  group_by(condicio, municipi, provincia) %>%
+  summarize_if(is.numeric, mean, na.rm = T)
+data1$stand. <- NULL
+data1$stand. <- data2$stand.
+data = data1
+
+EV = c('Alzheimer', 'Arthritis', 'Asthma', 'Atherosclerosis', 'Atrial fibrilation', 'Bipolar disorder', 'Breast cancer', 'Colon cancer', 'Depression', 'Diabetes', 'Heart failure', 'HIV', 'IBS/IBD', 'Kidney diseases', 'Lung cancer', 'Mania', 'Obesity', 'Psoriasis',  'Schizophrenia', 'Schizophrenia disorder', 'Thyroid cancer', 'Thyroid function')
+
+for(DISEASE in EV){
+    df = subset(data, condicio == DISEASE)
+    scensaldata <- df[with(df,order(-prev)),]
+    scensaldata$weights <- NULL
+    scensaldata = scensaldata[1:10,]
+    scensaldata$municipi <- factor(scensaldata$municipi, levels = scensaldata$municipi)
+    print(ggplot() + 
+            geom_bar(data = scensaldata, aes(x=municipi, y=prev, fill = provincia), stat = 'identity') +
+            theme_minimal() +
+            ggtitle(DISEASE) +
+            labs(x = 'Municipi', y = ' prevalence') +
+            theme(axis.text.x = element_text(angle=45, hjust = 1)))
+    print(landscape(kable_styling(kable(scensaldata[1:10,]))))
+    cat('----------------------------------------------------------------------------------------------------------------------------------------------------------------------------')
+    
+}
+```
+
+
+```{r, results='asis', include=FALSE}
+# ### 10 scensal units with lower prevalence value
+# data = conditions_gral[, stand., keyby = .(scensal, condicio, municipi, provincia, casos_prevalents, poblacio_prevalent, weights)]
+# data1 <- data %>% 
+#   group_by(condicio, municipi) %>%
+#   summarize_if(is.numeric, sum, na.rm = T)
+# data2 <- data %>% 
+#   group_by(condicio, municipi) %>%
+#   summarize_if(is.numeric, mean, na.rm = T)
+# data1$stand. <- NULL
+# data1$stand. <- data2$stand.
+# data = data1
+# 
+# EV = c('Alzheimer', 'Arthritis', 'Asthma', 'Atherosclerosis', 'Atrial fibrilation', 'Bipolar disorder', 'Breast cancer', 'Colon cancer', 'Depression', 'Diabetes', 'Heart failure', 'HIV', 'IBS/IBD', 'Kidney diseases', 'Lung cancer', 'Mania', 'Obesity', 'Psoriasis',  'Schizophrenia', 'Schizophrenia disorder', 'Thyroid cancer', 'Thyroid function')
+# 
+# for(DISEASE in EV){
+#     df = subset(data, condicio == DISEASE)
+#     scensaldata <- df[with(df,order(stand.)),]
+#     scensaldata$weights <- NULL
+#     scensaldata = scensaldata[1:10,]
+#     scensaldata$municipi <- factor(scensaldata$municipi, levels = scensaldata$municipi)
+#     print(ggplot() + 
+#             geom_bar(data = scensaldata, aes(x=municipi, y=stand., fill = provincia), stat = 'identity') +
+#             theme_minimal() +
+#             ggtitle(DISEASE) +
+#             labs(x = 'Scensal', y = ' prevalence') +
+#             theme(axis.text.x = element_text(angle=45, hjust = 1)))
+#     print(landscape(kable_styling(kable(scensaldata[1:10,]))))
+#         cat('----------------------------------------------------------------------------------------------------------------------------------------------------------------------------')
+  # }
+```
+
+## Data divided in 20 quantiles
+* Only the municipality with the highest population value in each quantile is used
+```{r, results='asis'}
+data = conditions_gral_municipal[, prev, keyby = .(condicio, municipi, provincia, poblacio_prevalent, perc_censat)]
+data <- data %>% 
+  group_by(condicio, municipi, provincia) %>%
+  summarize_if(is.numeric, mean, na.rm = T)
+numberlist = c(20:1)
+for(DISEASE in EV){
+  table <- data.frame(condicio=character(),
+                 municipi=character(), 
+                 provincia=character(),
+                 poblacio_prevalent=double(),
+                 prev = double(),
+                 quartile = integer(),
+                 stringsAsFactors=FALSE) 
+  df = subset(data, condicio == DISEASE)
+  df <- df[with(df,order(-prev)),]
+  for (number in numberlist) {
+    df$quartile <- ntile(df$prev, 20)  
+    quartils <- df[df$quartile == number, ] 
+    table = rbind(table, quartils[which.max(quartils$poblacio_prevalent),])
+  }
+  table$municipi <- factor(table$municipi, levels = table$municipi)
+  print(ggplot() + 
+          geom_bar(data = table, aes(x=municipi, y=prev, fill = provincia), stat = 'identity') +
+          theme_minimal() +
+          ggtitle(DISEASE) +
+          labs(x = 'Municipi', y = ' prevalence') +
+          theme(axis.text.x = element_text(angle=45, hjust = 1)))
+  table$quartile <- NULL
+  print(landscape(kable_styling(kable(table))))
+  cat('----------------------------------------------------------------------------------------------------------------------------------------------------------------------------')
+  }
+
+```
+
+```{r, results='asis', include=FALSE}
+# ### Huge populations ( > 2500 inhabitants by scensal code)
+# data = conditions_gral[, stand., keyby = .(condicio, municipi, poblacio_prevalent)]
+# data1 <- data %>% 
+#   group_by(condicio, municipi) %>%
+#   summarize_if(is.numeric, mean, na.rm = T)
+# data1$poblacio_prevalent <- NULL
+# data2 <- data %>% 
+#   group_by(condicio, municipi) %>%
+#   summarize_if(is.numeric, sum, na.rm = T)
+# data2$stand. <- NULL
+# data1$poblacio_prevalent <- data2$poblacio_prevalent
+# data <- data1
+# a = aggregate(data$poblacio_prevalent, by = list(data$municipi), max)
+# setDT(a)
+# a$scensal <- a$Group.1
+# a$Group.1 <- NULL
+# data$poblacio_prevalent<-NULL
+# data = merge(a, data)
+# data$poblacio_prevalent <- data$x
+# data$x <- NULL
+# data <- data[data$poblacio_prevalent >= 2500, ]
+# data = data %>% relocate(condicio, .before = scensal)
+# 
+# for(DISEASE in EV){
+#     df = subset(data, condicio == DISEASE)
+#     df <- df[with(df,order(-stand.)),]
+#     print(landscape(kable_styling(kable(df[seq(1, nrow(df), round(length(df[[1]])/20)), ]))))
+#   }
+
+```
+## Correlations
+### Correlation between conditions
+```{r, results='asis'}
+data = conditions_gral_municipal[, prev, keyby = .(condicio, municipi, provincia, poblacio_prevalent)]
+data1 <- data %>% 
+  group_by(condicio, municipi, provincia) %>%
+  summarize_if(is.numeric, mean, na.rm = T)
+data1$poblacio_prevalent <- NULL
+data2 <- data %>% 
+  group_by(condicio, municipi, provincia) %>%
+  summarize_if(is.numeric, sum, na.rm = T)
+data2$stand. <- NULL
+data1$poblacio_prevalent <- data2$poblacio_prevalent
+data <- data1
+a = aggregate(data$poblacio_prevalent, by = list(data$municipi), max)
+setDT(a)
+a$municipi <- a$Group.1
+a$Group.1 <- NULL
+data$poblacio_prevalent<-NULL
+data = merge(a, data)
+data$poblacio_prevalent <- data$x
+data$x <- NULL
+data$poblacio_prevalent<- NULL
+
+a = dcast(data, municipi ~ condicio)
+a[is.na(a)] = 0
+correlation_table = a[, cor(.SD), .SDcols = names(a)[(lapply(a, class) == "numeric")]]
+corrplot(correlation_table, type="upper", order="hclust",
+         col=brewer.pal(n=8, name="RdYlBu"))
+provincies=data[, .N, keyby = .(municipi, provincia)]
+provincies$N <- NULL
+a = merge(provincies, a)
+
+```
+
+
+### Correlation between Obesity and Colon cancer by municipi
+* Obesity quartiles and Colon cancer quintiles
+```{r}
+obesity = data[data$condicio == 'Obesity']
+o = quantile(obesity$stand., probs = seq(0,1,1/4))
+coloncancer = data[data$condicio == 'Colon cancer']
+c = quantile(coloncancer$stand., probs = seq(0,1,1/5))
+
+res <- cor.test(a$Obesity, a$`Colon cancer`, 
+                    method = "pearson")
+corr<-ggplot(a, aes(x=Obesity, y=`Colon cancer`, color=provincia)) + 
+  geom_point() +
+  geom_vline(xintercept = o[2], linetype = 'dashed') +
+  geom_vline(xintercept = o[3], linetype = 'dashed') +
+  geom_vline(xintercept = o[4], linetype = 'dashed') +
+  geom_hline(yintercept = c[2], linetype = 'dashed') +
+  geom_hline(yintercept = c[3], linetype = 'dashed') +
+  geom_hline(yintercept = c[4], linetype = 'dashed') +
+  geom_hline(yintercept = c[5], linetype = 'dashed') +
+ geom_smooth(method=lm, na.rm = TRUE, fullrange= TRUE,
+               aes(group=1),colour="black") 
+
+corr
+
+res
+```
+### Correlation between Obesity and Thyroid function by municipi
+* Obesity quartiles and Thyroid function quintiles
+```{r}
+obesity = data[data$condicio == 'Obesity']
+o = quantile(obesity$stand., probs = seq(0,1,1/4))
+thyroidfunction = data[data$condicio == 'Thyroid function']
+c = quantile(thyroidfunction$stand., probs = seq(0,1,1/5))
+
+res <- cor.test(a$Obesity, a$`Thyroid function`, 
+                    method = "pearson")
+corr<-ggplot(a, aes(x=Obesity, y=`Thyroid function`, color=provincia)) + 
+  geom_point() +
+  geom_vline(xintercept = o[2], linetype = 'dashed') +
+  geom_vline(xintercept = o[3], linetype = 'dashed') +
+  geom_vline(xintercept = o[4], linetype = 'dashed') +
+  geom_hline(yintercept = c[2], linetype = 'dashed') +
+  geom_hline(yintercept = c[3], linetype = 'dashed') +
+  geom_hline(yintercept = c[4], linetype = 'dashed') +
+  geom_hline(yintercept = c[5], linetype = 'dashed') +
+ geom_smooth(method=lm, na.rm = TRUE, fullrange= TRUE,
+               aes(group=1),colour="black") 
+
+corr
+
+res
+```
+### Correlation between Colon cancer and Thyroid function
+* Colon cancer quartiles and Thyroid function quintiles
+```{r}
+coloncancer = data[data$condicio == 'Colon cancer']
+o = quantile(coloncancer$stand., probs = seq(0,1,1/4))
+thyroidfunction = data[data$condicio == 'Thyroid function']
+c = quantile(thyroidfunction$stand., probs = seq(0,1,1/5))
+
+res <- cor.test(a$`Colon cancer`, a$`Thyroid function`, 
+                    method = "pearson")
+corr<-ggplot(a, aes(x=`Colon cancer`, y=`Thyroid function`, color=provincia)) + 
+  geom_point() +
+  geom_vline(xintercept = o[2], linetype = 'dashed') +
+  geom_vline(xintercept = o[3], linetype = 'dashed') +
+  geom_vline(xintercept = o[4], linetype = 'dashed') +
+  geom_hline(yintercept = c[2], linetype = 'dashed') +
+  geom_hline(yintercept = c[3], linetype = 'dashed') +
+  geom_hline(yintercept = c[4], linetype = 'dashed') +
+  geom_hline(yintercept = c[5], linetype = 'dashed') +
+ geom_smooth(method=lm, na.rm = TRUE, fullrange= TRUE,
+               aes(group=1),colour="black") 
+
+corr
+
+res
+```
+
+## Cluster analysis
+
+### Principal component analysis
+
+* Making 3 clusters as we are interested in determining how populations with high, medium and low prevalence are grouped. 
+* Only the 4 features with higher importance were used + colon cancer as it is a variable of interest
+
+```{r}
+data = conditions_gral_municipal %>% dplyr::select(municipi, condicio, prev)
+
+data = dcast(data, municipi ~ condicio, fill = 0)
+z <- data[,-c(1,1)]
+# means <- apply(z,2,mean)
+# sds <- apply(z,2,sd)
+# nor <- scale(z,center=means,scale=sds)
+set.seed(10)
+res <- kcca(z,k=3)
+set.seed(10)
+FeatureImp_res <- FeatureImpCluster(res,as.data.table(z))
+a = as.data.frame(FeatureImp_res$featureImp)
+z = z %>% dplyr::select(Obesity, Diabetes, `Thyroid function`, Asthma, `Colon cancer`)
+set.seed(10)
+res <- kcca(z,k=3)
+barplot(res)
+```
+
+
+
+### Cluster plot
+
+* Even if the Optimal number of clusters is 2, we decide to keep making 3 as it matches better our interests maintaining a high Silhouette width
+
+```{r}
+distance = dist(z)
+data.hclust = hclust(distance)
+pca <- prcomp(z, center = TRUE,scale. = TRUE)
+ggbiplot(pca)
+fviz_nbclust(z, kmeans, method = "silhouette")
+k2 <- kmeans(z, centers = 3, nstart = 25)
+fviz_cluster(k2, data = z)
+# plot(data.hclust)
+# plot(data.hclust,labels=data$municipi,main='Default from hclust')
+# plot(data.hclust,hang=-1, labels=data$municipi,main='Default from hclust')
+# wss <- (nrow(nor)-1)*sum(apply(nor,2,var))
+# for (i in 2:20) wss[i] <- sum(kmeans(nor, centers=i)$withinss)
+# plot(1:20, wss, type="b", xlab="Number of Clusters", ylab="Within groups sum of squares")
+# set.seed(1)
+# kc<-kmeans(nor,2)
+# kc
+# ot<-nor
+# datadistshortset<-dist(ot,method = "euclidean")
+# hc1 <- hclust(datadistshortset, method = "complete" )
+# pamvshortset <- pam(datadistshortset,2, diss = FALSE)
+# clusplot(pamvshortset, shade = FALSE,labels=2,col.clus="blue",col.p="red",span=FALSE,main="Cluster Mapping",cex=1.2)
+```

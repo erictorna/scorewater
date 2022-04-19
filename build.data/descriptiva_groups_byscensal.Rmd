@@ -1,0 +1,216 @@
+---
+title: "Groups by scensal"
+date: '`r Sys.time()`'
+output: 
+  html_document: 
+    toc: yes
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(knitr)
+library(kableExtra)
+library(survival)
+library(data.table)
+library(flextable)
+library(officer)
+library(GGally)
+library(survival)
+library(htmltools)
+library(dplyr)
+library(corrplot)
+library(RColorBrewer)
+library(ggpubr)
+library(cluster)
+library(factoextra) 
+library(devtools)
+library(FeatureImpCluster)
+library(flexclust)
+# install_github("vqv/ggbiplot")
+library(ggbiplot)
+knitr::opts_chunk$set(echo = FALSE)
+setwd("/home/idiap/projects/scorewater/build.data")
+load('groups_standardized_byscensal.RData')
+setDT(groups_gral)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+# Groups
+## Total number of cases for every ICD10MC group
+
+```{r}
+autofit(flextable(groups_gral[,.(n=sum(casos_prevalents ,na.rm = T)),.(grup_ICD10MC)]))
+```
+
+
+### Barplot
+
+```{r, fig.width = 7, fig.height=4.5, fig.align='center'}
+n_grup = groups_gral[,.(n=sum(casos_prevalents ,na.rm = T)),.(ICD10MC = grup_ICD10MC)][]
+
+ggplot() + 
+  geom_bar(data = n_grup, aes(x=ICD10MC, y=n), stat = 'identity') +
+  theme_minimal() +
+  # scale_x_continuous(breaks = seq(35,110,5)) +
+  labs(x = 'Group ICD10MC', y = 'Number of Individuals')
+
+```
+
+
+```{r, include=FALSE}
+# Total Number of every condition * scensal
+a = groups_gral[, .N, keyby = .(subgrup)]
+condiciolist = a[[1]]
+fstat = function(x) factor(x, labels = condiciolist)
+groups_gral[, subgrup := fstat(subgrup)]
+# kable(dcast(groups_gral[, sum(casos_prevalents ,na.rm = T), keyby = .(subgrup, scensal)], subgrup ~ scensal))
+```
+
+## Tables
+### 10 populations with higher prevalence value
+```{r, results='asis'}
+data = groups_gral[, stand., keyby = .(subgrup, scensal, provincia, casos_prevalents, poblacio_prevalent, perc_censat)]
+data1 <- data %>% 
+  group_by(subgrup, scensal, provincia) %>%
+  summarize_if(is.numeric, sum, na.rm = T)
+data2 <- data %>% 
+  group_by(subgrup, scensal, provincia) %>%
+  summarize_if(is.numeric, mean, na.rm = T)
+data1$stand. <- NULL
+data1$stand. <- data2$stand.
+data = data1
+EV = condiciolist
+
+for(DISEASE in EV){
+    df = subset(data, subgrup == DISEASE)
+    scensaldata <- df[with(df,order(-stand.)),]
+    scensaldata$weights <- NULL
+    scensaldata = scensaldata[1:10,]
+    scensaldata$scensal <- factor(scensaldata$scensal, levels = scensaldata$scensal)
+    print(ggplot() +
+            geom_bar(data = scensaldata, aes(x=scensal, y=stand., fill = provincia), stat = 'identity') +
+            theme_minimal() +
+            ggtitle(DISEASE) +
+            labs(x = 'Censal code', y = ' prevalence') +
+            theme(axis.text.x = element_text(angle=45, hjust = 1)))
+    print(landscape(kable_styling(kable(scensaldata[1:10,]))))
+    cat('----------------------------------------------------------------------------------------------------------------------------------------------------------------------------')
+}
+```
+
+
+```{r, results='asis', include=FALSE}
+# ### 10 scensal units with lower prevalence value
+# data = groups_gral[, stand., keyby = .(scensal, subgrup, municipi, casos_prevalents, poblacio_prevalent, weights)]
+# data1 <- data %>% 
+#   group_by(subgrup, scensal) %>%
+#   summarize_if(is.numeric, sum, na.rm = T)
+# data2 <- data %>% 
+#   group_by(subgrup, scensal) %>%
+#   summarize_if(is.numeric, mean, na.rm = T)
+# data1$stand. <- NULL
+# data1$stand. <- data2$stand.
+# data = data1
+# 
+# 
+# for(DISEASE in EV){
+#     df = subset(data, subgrup == DISEASE)
+#     scensaldata <- df[with(df,order(stand.)),]
+#     scensaldata$weights <- NULL
+#     print(landscape(kable_styling(kable(scensaldata[1:10,]))))
+#   }
+```
+## Qantiles
+### 20 quantiles 
+* Displaying the censal code unit with highest prevalence value of every quantile
+```{r, results='asis'}
+data = groups_gral[, stand., keyby = .(subgrup, scensal, provincia, poblacio_prevalent, perc_censat)]
+data <- data %>% 
+  group_by(subgrup, scensal, provincia) %>%
+  summarize_if(is.numeric, mean, na.rm = T)
+numberlist = c(20:1)
+for(DISEASE in EV){
+  table <- data.frame(subgrup=factor(),
+                 scensal=character(), 
+                 provincia=character(),
+                 stand. = double(),
+                 poblacio_prevalent = double(),
+                 quartile = integer(),
+                 stringsAsFactors=FALSE) 
+  df = subset(data, subgrup == DISEASE)
+  df <- df[with(df,order(-stand.)),]
+  for (number in numberlist) {
+    df$quartile <- ntile(df$stand., 20)  
+    quartils <- df[df$quartile == number, ] 
+    table = rbind(table, quartils[which.max(quartils$stand.),])
+  }
+  table$scensal <- factor(table$scensal, levels = table$scensal)
+  print(ggplot() + 
+          geom_bar(data = table, aes(x=scensal, y=stand., fill = provincia), stat = 'identity') +
+          theme_minimal() +
+          ggtitle(DISEASE) +
+          labs(x = 'Censal code', y = ' prevalence') +
+          theme(axis.text.x = element_text(angle=45, hjust = 1)))
+  table$quartile <- NULL
+  print(landscape(kable_styling(kable(table))))
+  cat('----------------------------------------------------------------------------------------------------------------------------------------------------------------------------')
+  }
+```
+
+## Cluster analysis
+
+### Principal component analysis
+
+* Making 3 clusters as we are interested in determining how populations with high, medium and low prevalence are grouped. 
+* Only the 5 features with higher importance were used + 'Neoplasies malignes d'organs digestius' as colon cancer is within this group
+
+```{r}
+data = groups_gral %>% dplyr::select(scensal, subgrup, stand.)
+
+data = dcast(data, scensal ~ subgrup, fill = 0)
+z <- data[,-c(1,1)]
+# means <- apply(z,2,mean)
+# sds <- apply(z,2,sd)
+# nor <- scale(z,center=means,scale=sds)
+set.seed(10)
+res <- kcca(z,k=3)
+set.seed(10)
+FeatureImp_res <- FeatureImpCluster(res,as.data.table(z))
+a = as.data.frame(FeatureImp_res$featureImp)
+# Seleccionem només les 5 variables més importants + Neoplàsies malignes d'òrgans digestius que és on trobem el cancer de colon
+z = z %>% dplyr::select(`Síndromes del comportament associades a alteracions fisiològiques i factors físics`, `Trastorns d'ansietat, dissociatius, relacionats amb l'estrès, somatomorfs i altres trastorns mentals no psicòtics`, `Trastorns mentals i del comportament causats per consum de substàncies psicoactives`, `Trastorns metabòlics`, `Altres malalties de vies respiratòries altes`, `Neoplàsies malignes d'òrgans digestius` )
+z = z %>%
+    dplyr::rename(
+      `Síndromes comportament` = `Síndromes del comportament associades a alteracions fisiològiques i factors físics`,
+      `Trastorns d'ansietat` = `Trastorns d'ansietat, dissociatius, relacionats amb l'estrès, somatomorfs i altres trastorns mentals no psicòtics`,
+      `Trastorns mentals` = `Trastorns mentals i del comportament causats per consum de substàncies psicoactives`,
+      `Malalties respiratòries` = `Altres malalties de vies respiratòries altes`,
+      `Neoplàsies digestives` = `Neoplàsies malignes d'òrgans digestius`
+    )
+set.seed(10)
+res <- kcca(z,k=3)
+barplot(res)
+```
+
+### Cluster plot
+
+* Even if the Optimal number of clusters is 2, we decide to keep making 3 as it matches better our interests maintaining a high Silhouette width
+
+```{r}
+distance = dist(z)
+data.hclust = hclust(distance)
+pca <- prcomp(z, center = TRUE,scale. = TRUE)
+ggbiplot(pca)
+fviz_nbclust(z, kmeans, method = "silhouette")
+k2 <- kmeans(z, centers = 3, nstart = 25)
+fviz_cluster(k2, data = z)
+```
+
+
+* 492 = censal code 0801907097
+* 2615 = censal code 2501001001
+* 1851 = censal code 0820005003
+* 2746 = censal code 2516801001
+* 754 = censal code 0801910094
