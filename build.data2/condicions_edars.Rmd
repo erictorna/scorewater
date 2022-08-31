@@ -1,0 +1,73 @@
+---
+title: "Conditions EDARS"
+date: '`r Sys.time()`'
+output: 
+  html_document: 
+    toc: yes
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(knitr)
+library(kableExtra)
+library(survival)
+library(data.table)
+library(flextable)
+library(officer)
+library(GGally)
+library(survival)
+library(htmltools)
+library(dplyr)
+library(corrplot)
+library(RColorBrewer)
+library(ggpubr)
+library(cluster)
+library(factoextra) 
+library(devtools)
+library(FeatureImpCluster)
+library(flexclust)
+# install_github("vqv/ggbiplot")
+library(ggbiplot)
+knitr::opts_chunk$set(echo = FALSE)
+load("/home/idiap/projects/scorewater/build.data2/edars_condicions.RData")
+
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r}
+fstat = function(x) factor(x, labels = c('Alzheimer', 'Arthritis', 'Asthma', 'Atherosclerosis', 'Atrial fibrillation','Bipolar disorder','Breast cancer','Colon cancer','Depression','Diabetes','HIV','Heart failure','IBS/IBD','Kidney diseases','Lung cancer','Mania','Obesity','Psoriasis','Schizophrenia','Schizophrenia disorder','Thyroid cancer','Thyroid function'))
+
+EV = c('Alzheimer', 'Arthritis', 'Asthma', 'Atherosclerosis', 'Atrial fibrillation','Bipolar disorder','Breast cancer','Colon cancer','Depression','Diabetes','HIV','Heart failure','IBS/IBD','Kidney diseases','Lung cancer','Mania','Obesity','Psoriasis','Schizophrenia','Schizophrenia disorder','Thyroid cancer','Thyroid function')
+
+# EDAR=c('DABR','DAIT','DALC','DAMP','DBAL','DBAY','DBBL','DBER','DBLN','DBSS','DCER','DCPA','DFAL','DFIG','DFON','DGIR','DGRA','DGVC','DIGU','DLLE','DLLL','DMAN','DMAS','DMAT','DMDV','DMIR','DMLN','DMOB','DMOF','DMRT','DOLO','DPDL','DRIP','DRSS','DRUS','DSFL','DSLL','DSOR','DSRS','DTAR','DTOT','DTRG','DTRP','DTSE','DVAL','DVDP','DVIC','DVLC','DVLG','Carmel','Poblenou','St.Gervasi')
+```
+
+```{r, results='asis'}
+setDT(edars)
+data = edars[, prev, keyby = .(condicio, codi_edar, poblacio_prevalent, poblacio_real, casos_prevalents, perc_censat)]
+for(DISEASE in EV){
+  cat(sprintf("\n\n# %s \n\n", DISEASE))
+  table <- data.frame(condicio=character(),
+                 codi_edar=character(), 
+                 poblacio_prevalent=double(),
+                 perc_censat = double(),
+                 prev = double(),
+                 quartile = integer(),
+                 stringsAsFactors=FALSE) 
+  df = subset(data, condicio == DISEASE)
+  df <- df[with(df,order(-prev)),]
+  df$quantile <- ntile(df$prev, 20)  
+  df$codi_edar <- factor(df$codi_edar, levels = df$codi_edar)
+  print(ggplot() + 
+        geom_bar(data = df, aes(x=codi_edar, y=prev, fill = quantile), stat = 'identity') +
+        theme_minimal() +
+        ggtitle(DISEASE) +
+        labs(x = 'Quantile', y = ' prevalence') +
+        theme(axis.text.x = element_text(angle=90, hjust = 1)))
+  df$condicio <- NULL
+  df$quantile <- NULL
+  print(kable_styling(kable(df)))
+  }
+```
